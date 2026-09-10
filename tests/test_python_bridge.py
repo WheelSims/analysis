@@ -60,6 +60,9 @@ def test_python_bridge():
         assert received_data["id"] == "test_123_456"
         assert received_data["value"] == ["test", 123.45, 1, 2, 3]
 
+        # Close the bridge
+        sender.send({"command": "close", "kwargs": {}, "id": "close"})
+
     except Exception as e:
         raise e
     finally:

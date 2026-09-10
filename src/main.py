@@ -3,25 +3,32 @@ Main entry point to launch commands from Godot.
 
 This script listens for JSON strings of this form:
     {
+        "id": str,
         "command": str,
-        "args": any
-        "run_mode": "once", "start" or "stop"
+        "kwargs": dict[str, Any]
     }
 
-For run_mode == "once", the function listed in COMMAND_MAPPING[command] is
-executed once.
-
-For run_mode == "start", the function listed in COMMAND_MAPPING[command] starts
-being executed continuously. Many functions can be started at the same time;
-in this case they are executed one after the other, continuously.
-
-For run_mode == "stop", the function listed in COMMAND_MAPPING[command] stops
-being executed consinuously.
+where command is a key of COMMAND_MAPPING, kwargs are the arguments sent to
+the function in COMMAND_MAPPING, and id is any unique ID, that serves to match
+the returned value to its caller.
 
 Command "close" is reserved for closing the python bridge.
 
+The script returns values using JSON strings of this form:
+    {
+        "id": str,
+        "value": Any
+    }
+
+where id is the same as it was received, and value is the function's
+return value.
+
 """
 
+print("Initializing wheelsims_analysis...")
+
+# ruff: disable[E402]
+# because we want the text to appear in the console without delay
 import os
 import time
 import traceback
@@ -32,6 +39,8 @@ import biofeedback
 import biofeedback_pushrim_kinetics as bf_pk
 import data_logging
 from python_bridge import GODOT_TO_PYTHON_PORT, IP, Receiver, sender
+
+# ruff: enable[E402]
 
 # How many seconds to sleep before polling UDP again once it's empty
 SLEEP_TIME_ON_EMPTY_UDP_BUFFER = 1 / 60  # s
