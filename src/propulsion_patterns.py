@@ -16,7 +16,7 @@ and rotate the coordinates to align with this local sagittal plane convention
 before passing them to any functions in this module.
 """
 
-from typing import Literal, TypedDict
+from typing import TypedDict
 
 import kineticstoolkit as ktk
 import matplotlib.pyplot as plt
@@ -60,7 +60,7 @@ class SignedAreas(TypedDict):
         Array of coordinates representing the push path for this segment.
     """
 
-    sign: Literal["positive", "negative"]
+    sign: str  # "positive" or "negative"
     area: float
     recovery_phase: np.ndarray
     push_phase: np.ndarray
@@ -76,8 +76,8 @@ class SegmentedCycle(TypedDict):
         Time (s) and coordinate value (m) marking the end of the push phase.
     """
 
-    in_push: dict[Literal["time", "value"], float]
-    end_push: dict[Literal["time", "value"], float]
+    in_push: dict[str, float]  # where str is "time" or "value"
+    end_push: dict[str, float]  # where str is "time" or "value"
 
 
 class FilteredCycle(TypedDict):
@@ -97,9 +97,9 @@ class FilteredCycle(TypedDict):
         Maximum velocity reached during the cycle.
     """
 
-    in_push: dict[Literal["time", "value"], float]
-    recovery: dict[Literal["time", "value"], float]
-    end_push: dict[Literal["time", "value"], float]
+    in_push: dict[str, float]  # where str is "time" or "value"
+    recovery: dict[str, float]  # where str is "time" or "value"
+    end_push: dict[str, float]  # where str is "time" or "value"
     range: float
     velocity_max: float
 
@@ -140,9 +140,9 @@ class AnalyzedCycle(TypedDict):
         possible.
     """
 
-    in_push: dict[Literal["time", "value"], float]
-    recovery: dict[Literal["time", "value"], float]
-    end_push: dict[Literal["time", "value"], float]
+    in_push: dict[str, float]  # where str is "time" or "value"
+    recovery: dict[str, float]  # where str is "time" or "value"
+    end_push: dict[str, float]  # where str is "time" or "value"
     range: float
     velocity_max: float
     push_frequency: float
@@ -150,16 +150,7 @@ class AnalyzedCycle(TypedDict):
     areas: list[SignedAreas] | None
     A1: float | None
     A2: float | None
-    label_push_pattern: (
-        Literal[
-            "Pumping (PM)",
-            "Semi-Circular (SC)",
-            "Single-Loop (SLOP)",
-            "Double-Loop (DLOP)",
-            "",
-        ]
-        | None
-    )
+    label_push_pattern: str | None
 
 
 # %% Public functions
@@ -499,13 +490,7 @@ def classify_push_pattern(
     pattern_a2_sc_threshold: float = PATTERN_A2_SC_THRESHOLD,
     pattern_a2_slop_threshold: float = PATTERN_A2_SLOP_THRESHOLD,
 ) -> tuple[
-    Literal[
-        "Pumping (PM)",
-        "Semi-Circular (SC)",
-        "Single-Loop (SLOP)",
-        "Double-Loop (DLOP)",
-        "",
-    ],
+    str,
     float | None,
     float | None,
     list[SignedAreas] | None,
@@ -557,17 +542,6 @@ def classify_push_pattern(
         recovery_time=recovery_time,
     )
 
-    # Compute label push pattern
-    PatternLabel = Literal[
-        "Pumping (PM)",
-        "Semi-Circular (SC)",
-        "Single-Loop (SLOP)",
-        "Double-Loop (DLOP)",
-        "",
-    ]
-
-    label_push_pattern: PatternLabel = ""
-
     if push_phase is None or recovery_phase is None:
         A1 = None
         A2 = None
@@ -595,11 +569,10 @@ def classify_push_pattern(
 
 
 def plot_bilateral_cycles(
-    dict_ts_propulsion_cycles: dict[Literal["left", "right"], ktk.TimeSeries],
+    dict_ts_propulsion_cycles: dict[str, ktk.TimeSeries],
     dict_cycles: (
-        dict[Literal["left", "right"], list[AnalyzedCycle]]
-        | dict[Literal["left", "right"], list[SegmentedCycle]]
-    ),
+        dict[str, list[AnalyzedCycle]] | dict[str, list[SegmentedCycle]]
+    ),  # where str is "left" or "right"
 ) -> None:
     """
     Plot bilateral hand kinematics with highlighted propulsion cycles.
@@ -613,11 +586,7 @@ def plot_bilateral_cycles(
     plt.figure()
     plt.suptitle("Bilateral kinematics")
 
-    sides: tuple[Literal["left", "right"], Literal["left", "right"]] = (
-        "left",
-        "right",
-    )
-    for side in sides:
+    for side in ("left", "right"):
         ts_full = dict_ts_propulsion_cycles[side]
 
         if ts_full is None:
@@ -654,7 +623,7 @@ def plot_bilateral_cycles(
 def plot_unilateral_push_patterns(
     ts_propulsion_cycles: ktk.TimeSeries,
     cycles: list[AnalyzedCycle],
-    side: Literal["left", "right", "unspecified"] = "unspecified",
+    side: str = "unspecified",  # or "left" or "right"
     wheel_diameter: float = WHEEL_DIAMETER,
 ) -> None:
     """

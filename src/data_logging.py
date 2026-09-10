@@ -58,7 +58,7 @@ class FileLogger:
         """
         if self.file and not self.file.closed:
             for row in data_lines:
-                self.file.write("\t".join(map(str, row)) + "\n")
+                self.file.write(",".join(map(str, row)) + "\n")
 
         else:
             raise ValueError(f"File {self.file.name('\\')[-1]} is closed.")
@@ -261,9 +261,9 @@ def _make_header(
 
     """
     header = [
-        ["time"]
+        ['"time"']
         + [
-            data_headers[i] + "[:," + str(j) + "]"
+            '"' + data_headers[i] + "[:," + str(j) + ']"'
             for i in range(len(data_headers))
             for j in range(data_columns[i])
         ]
@@ -329,7 +329,9 @@ def _save_ts(
     """
     if len(ts.time) > 0:
         if filetype not in session_writers:
-            header = [["time"] + list(ts.to_dataframe().columns)]
+            header = [
+                ['"time"'] + [f'"{s}"' for s in ts.to_dataframe().columns]
+            ]
             filename = _make_filename(scene, filetype, session_details)
             _make_file(
                 os.path.join(str(session_details.trial_folder), filename),

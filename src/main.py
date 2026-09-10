@@ -3,67 +3,65 @@ Main entry point to launch commands from Godot.
 
 This script listens for JSON strings of this form:
     {
+        "id": str,
         "command": str,
-        "args": any
-        "run_mode": "once", "start" or "stop"
+        "kwargs": dict[str, Any]
     }
 
-For run_mode == "once", the function listed in COMMAND_MAPPING[command] is
-executed once.
+where command is a key of COMMAND_MAPPING, kwargs are the arguments sent to
+the function in COMMAND_MAPPING, and id is any unique ID, that serves to match
+the returned value to its caller.
 
-For run_mode == "start", the function listed in COMMAND_MAPPING[command] starts
-being executed continuously. Many functions can be started at the same time;
-in this case they are executed one after the other, continuously.
+Command "close" is reserved for closing the python bridge.
 
-For run_mode == "stop", the function listed in COMMAND_MAPPING[command] stops
-being executed consinuously.
+The script returns values using JSON strings of this form:
+    {
+        "id": str,
+        "value": Any
+    }
+
+where id is the same as it was received, and value is the function's
+return value.
+
 """
 
+print("--------------------")
+print(" WheelSims Analysis ")
+print("--------------------")
+print("Importing Python Modules...")
+
+# ruff: disable[E402]
+# because we want the text to appear in the console without delay
 import os
+import time
+import traceback
 from collections.abc import Callable
-from typing import Any
+from itertools import cycle
 
 import biofeedback
+import biofeedback_pushrim_kinetics as bf_pk
 import data_logging
 from python_bridge import GODOT_TO_PYTHON_PORT, IP, Receiver, sender
 
+# ruff: enable[E402]
 
-class PrivateVariables:
-    """Keep track of private variables."""
-
-    is_running: bool = True
-
-
-_private_vars = PrivateVariables
-_running_commands: dict[str, dict[str, Any]] = {}
+# How many seconds to sleep before polling UDP again once it's empty
+SLEEP_TIME_ON_EMPTY_UDP_BUFFER = 1 / 60  # s
+SPINNER = cycle("|/-\\")
 
 
-def _close(args=None):
-    """Close the Python app."""
-    print("\nClose Python app...")
-    _private_vars.is_running = False
-
-
-def _send_ready() -> None:
-    """Send ready to Godot."""
-    sender.send({"command": "ready", "args": {}, "data": []})
-
-
-def _test(arg1: str, arg2: int) -> None:
+def _test(arg1: int, arg2: int) -> list:
     """Answer to test command (used in unit tests)."""
-    sender.send(
-        {
-            "command": "test",
-            "data": [arg1, arg2, 1, 2, 3],
-        }
-    )
+    time.sleep(1)
+    return [arg1, arg2, 1, 2, 3]
 
 
 COMMAND_MAPPING: dict[str, Callable] = {
     "test": _test,
-    "biofeedback_update": biofeedback.biofeedback_update,
+    "biofeedback_kinematics": biofeedback.biofeedback_kinematics,
     "biofeedback_stop": biofeedback.biofeedback_stop,
-    "close": _close,
+    "biofeedback_pushrim_kinetics_connect": bf_pk.connect,
+    "biofeedback_pushrim_kinetics_process": bf_pk.process,
     "start_logging": data_logging.start_log,
     "create_trial": data_logging.create_trial,
     "data_logging": data_logging.save_data,
@@ -76,39 +74,43 @@ if __name__ == "__main__":
     # Create the receiver
     receiver = Receiver(ip=IP, port=GODOT_TO_PYTHON_PORT, timeout=0.0)
     # Send "ready" to Godot
-    _send_ready()
+    sender.send({"id": "ready", "value": None})
+    print("Ready.")
 
+    stay_in_loop = True
     # Listening Godot requests
-    while _private_vars.is_running:
+    while True:
         # Execute every command in the UDP buffer
         while command_dict := receiver.receive():
             command = command_dict["command"]
-            run_mode = command_dict["run_mode"]
-            args = command_dict["args"]
+            kwargs = command_dict["kwargs"]
+            command_id = command_dict["id"]
 
-            print(f"{run_mode} : {command} {args}")
+            if command == "close":
+                # Close now
+                stay_in_loop = False
+                break
 
-            if run_mode == "start":
-                if command not in _running_commands:
-                    _running_commands[command] = {"args": args}
+            try:
+                return_value = COMMAND_MAPPING[command](
+                    **command_dict["kwargs"]
+                )
+            except Exception:
+                return_value = None
+                print("======================")
+                print(f"Exception in command {command} with kwargs {kwargs}.")
+                traceback.print_exc()
 
-            elif run_mode == "stop":
-                if command in _running_commands:
-                    _running_commands.pop(command)
-
-            elif run_mode == "once":
-                COMMAND_MAPPING[command](**command_dict["args"])
-
-            else:
-                raise ValueError("frequency must be 'start', 'stop' or 'once'")
+            # Send back the return value
+            sender.send({"id": command_id, "value": return_value})
+            print(next(SPINNER), end="\r", flush=True)
 
         # Do not execute repeating commands after shutdown request
-        if not _private_vars.is_running:
+        if not stay_in_loop:
             break
 
-        # Execute every repeating command
-        for command in _running_commands:
-            COMMAND_MAPPING[command](**_running_commands[command]["args"])
+        # Wait some time before checking if a new request was received
+        time.sleep(SLEEP_TIME_ON_EMPTY_UDP_BUFFER)
 
     # Quit
     os._exit(0)

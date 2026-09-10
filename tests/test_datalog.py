@@ -7,7 +7,7 @@ modify test_functionname and maybe add other test functions.
 """
 
 import os
-
+import sys
 import shutil
 import time
 from datetime import date, datetime
@@ -16,7 +16,12 @@ import kineticstoolkit as ktk
 import numpy as np
 import pandas as pd
 
-from src import data_logging
+
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(root_dir, "src"))
+sys.path.append(root_dir)
+
+import data_logging
 
 arg = {
     "folder": os.getcwd(),
@@ -39,14 +44,14 @@ trajectory = {
 wheels = {
     "file": "right",
     "headers": ["Analog", "IMU", "Encoder", "Power"],
-    "sample": "nextwheel_fetch.ktk.zip",
+    "sample": root_dir + "/tests/data/nextwheel_fetch.ktk.zip",
     "data": None,
 }
 
 motion = {
     "file": "rigidbody",
     "headers": ["102", "201", "202"],
-    "sample": "optitrack_untransformed.ktk.zip",
+    "sample": root_dir + "/tests/data/optitrack_untransformed.ktk.zip",
     "data": None,
 }
 
@@ -129,7 +134,7 @@ def test_create_trial():
             session_details.trial_folder,
             writers["player_trajectory"].file.name.split("\\")[-1],
         ),
-        sep="\t",
+        sep=",",
     )
 
     assert list(data.columns) == ["time"] + [
@@ -261,7 +266,7 @@ def test_save_data():
             session_details.trial_folder,
             writers["player_trajectory"].file.name.split("\\")[-1],
         ),
-        sep="\t",
+        sep=",",
     )
 
     for col in data.columns:
@@ -344,8 +349,7 @@ def test_save_ts():
             )
 
             data = pd.read_csv(
-                os.path.join(session_details.trial_folder, filename),
-                sep="\t",
+                os.path.join(session_details.trial_folder, filename), sep=","
             )
 
             data_header = list(

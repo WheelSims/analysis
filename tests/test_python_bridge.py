@@ -43,22 +43,25 @@ def test_python_bridge():
 
     try:
         received_data = receiver.receive()
-        assert received_data["command"] == "ready"
-        assert received_data["data"] == []
+        assert received_data["id"] == "ready"
+        assert received_data["value"] == None
 
         # Check that we can send a test command
         sender.send(
             {
                 "command": "test",
-                "args": {"arg1": "test", "arg2": 123.45},
-                "run_mode": "once",
+                "kwargs": {"arg1": "test", "arg2": 123.45},
+                "id": "test_123_456",
             }
         )
 
         # Check that we receive something
         received_data = receiver.receive()
-        assert received_data["command"] == "test"
-        assert received_data["data"] == ["test", 123.45, 1, 2, 3]
+        assert received_data["id"] == "test_123_456"
+        assert received_data["value"] == ["test", 123.45, 1, 2, 3]
+
+        # Close the bridge
+        sender.send({"command": "close", "kwargs": {}, "id": "close"})
 
     except Exception as e:
         raise e

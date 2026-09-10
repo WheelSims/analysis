@@ -25,7 +25,7 @@ def test_with_udp_data_from_motive():
     Validate the biofeedback update loop using prerecorded OptiTrack data.
 
     This test simulates an offline real-time stream by incrementally feeding
-    time series segments into the "biofeedback_update" pipeline. It verifies
+    time series segments into the "biofeedback_kinematics" pipeline. It verifies
     that the expected number of propulsion cycles and full kinematics time
     series samples are extracted. It also confirms that the detected propulsion
     cycles are classified with the expected push pattern labels, ensuring that
@@ -60,7 +60,7 @@ def test_with_udp_data_from_motive():
         data_temp["201"] = data["201"].get_ts_before_index(i)
         data_temp["202"] = data["202"].get_ts_before_index(i)
         biofeedback._runtime_state["data"] = data_temp
-        biofeedback.biofeedback_update(**arg)
+        biofeedback.biofeedback_kinematics(**arg)
     results = biofeedback.kinematics_data.copy()
     biofeedback.biofeedback_stop()
 
@@ -72,9 +72,12 @@ def test_with_udp_data_from_motive():
         len(results["ts_full"]["right"].time),
     ]
 
-    assert [8, 8, 1224, 1224] == y_1, (
-        f"TEST FAILED: Exp: [8, 8, 1224, 1224] | Got: {y_1} | "
-    )
+    assert [
+        8,
+        8,
+        1224,
+        1224,
+    ] == y_1, f"TEST FAILED: Exp: [8, 8, 1224, 1224] | Got: {y_1} | "
 
     # Verify the push pattern labels of the detected cycles
     y_2 = [

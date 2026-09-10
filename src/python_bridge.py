@@ -107,7 +107,6 @@ class Sender:
         """
         json_message = json.dumps(data).encode("utf-8")
         self.socket.sendto(json_message, (self.ip, self.port))
-        print(f"Sending {data}")
 
 
 # Create a sender instance to be imported by the different modules
