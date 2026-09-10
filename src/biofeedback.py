@@ -12,7 +12,7 @@ The resulting metrics are synchronized and sent to the Godot engine.
 """
 
 import time
-from typing import Final, Literal, TypedDict
+from typing import Any, Final, TypedDict
 
 import kineticstoolkit as ktk
 import matplotlib.pyplot as plt
@@ -20,7 +20,6 @@ import numpy as np
 
 import optitrack as ot
 import propulsion_patterns
-from python_bridge import sender
 
 # %% Public variables
 # Current analysis window (n s).
@@ -76,7 +75,7 @@ class DataSide(TypedDict):
 
     id_streaming: str
     local_meta2: np.ndarray
-    side: Literal["left", "right"]
+    side: str  # either "left" or "right"
     wheel_center: np.ndarray
 
 
@@ -94,7 +93,7 @@ class Areas(TypedDict):
         Array of coordinates representing the push path for this segment.
     """
 
-    sign: Literal["positive", "negative"]
+    sign: str  # "positive" or "negative"
     area: float
     recovery_phase: np.ndarray
     push_phase: np.ndarray
@@ -136,9 +135,9 @@ class PushCycle(TypedDict):
         possible.
     """
 
-    in_push: dict[Literal["time", "value"], float]
-    recovery: dict[Literal["time", "value"], float]
-    end_push: dict[Literal["time", "value"], float]
+    in_push: dict[str, float]  # keys are "time" or "value"
+    recovery: dict[str, float]  # keys are "time" or "value"
+    end_push: dict[str, float]  # keys are "time" or "value"
     range: float
     velocity_max: float
     push_frequency: float
@@ -146,16 +145,7 @@ class PushCycle(TypedDict):
     areas: list[Areas] | None
     A1: float | None
     A2: float | None
-    label_push_pattern: (
-        Literal[
-            "Pumping (PM)",
-            "Semi-Circular (SC)",
-            "Single-Loop (SLOP)",
-            "Double-Loop (DLOP)",
-            "",
-        ]
-        | None
-    )
+    label_push_pattern: str | None
 
 
 class KtkDataAndCycles(TypedDict):
@@ -191,13 +181,13 @@ class RuntimeState(TypedDict):
          Counter or index tracking cycles sent to the biofeedback display.
     """
 
-    run_mode: Literal["start", "stop", "offline"]
+    run_mode: str  # "start", "stop" or "offline"
     data: dict[str, ktk.TimeSeries] | None
     current_window_data: (
-        dict[Literal["left", "right"], KtkDataAndCycles] | None
-    )
-    new_cycle_log: dict[Literal["left", "right"], int]
-    new_cycle_send: dict[Literal["left", "right"], int]
+        dict[str, KtkDataAndCycles] | None
+    )  # where str is "left" or "right
+    new_cycle_log: dict[str, int]  # where str is "left" or "right
+    new_cycle_send: dict[str, int]  # where str is "left" or "right
 
 
 class KinematicsData(TypedDict):
@@ -210,8 +200,8 @@ class KinematicsData(TypedDict):
         Full continuous time-series history aggregated since the session start.
     """
 
-    cycles: dict[Literal["left", "right"], list]
-    ts_full: dict[Literal["left", "right"], ktk.TimeSeries | None]
+    cycles: dict[str, list]  # where str is "left" or "right
+    ts_full: dict[str, ktk.TimeSeries | None]  # where str is "left" or "right
 
 
 # %% Private variables
@@ -249,14 +239,12 @@ def biofeedback_stop() -> None:
             kinematics_data["ts_full"]["left"] is not None
             and kinematics_data["ts_full"]["right"] is not None
         ):
-            dict_ts_propulsion_cycles: dict[
-                Literal["left", "right"], ktk.TimeSeries
-            ] = {
+            dict_ts_propulsion_cycles: dict[str, ktk.TimeSeries] = {
                 "left": kinematics_data["ts_full"]["left"],
                 "right": kinematics_data["ts_full"]["right"],
             }
 
-            dict_cycles: dict[Literal["left", "right"], list[PushCycle]] = {
+            dict_cycles: dict[str, list[PushCycle]] = {
                 "left": kinematics_data["cycles"]["left"],
                 "right": kinematics_data["cycles"]["right"],
             }
@@ -292,15 +280,15 @@ def biofeedback_stop() -> None:
     plt.show()
 
 
-def biofeedback_update(
+def biofeedback_kinematics(
     coordinates_left_wheel_center: tuple[float, float, float],
     coordinates_right_wheel_center: tuple[float, float, float],
     coordinates_left_hand: tuple[float, float, float],
     coordinates_right_hand: tuple[float, float, float],
     wheel_diameter: float,
-) -> None:
+) -> dict[str, Any]:
     """
-    Execute an update iteration for the biofeedback (live and offline modes).
+    Execute an iteration for the biofeedback (live and offline modes).
 
     Handles the streaming state machine: initializes OptiTrack on startup,
     fetches new tracking frames in 'start' mode, or processes pre-loaded local
@@ -344,9 +332,9 @@ def biofeedback_update(
             print(e)
 
         if not _runtime_state["data"]:
-            return
+            return {}
 
-        _execute_analysis_pipeline(
+        return _execute_analysis_pipeline(
             _runtime_state,
             kinematics_data,
             coordinates,
@@ -355,30 +343,32 @@ def biofeedback_update(
 
     elif _runtime_state["run_mode"] == "offline":
         if not _runtime_state["data"]:
-            return
+            return {}
 
-        _execute_analysis_pipeline(
+        return _execute_analysis_pipeline(
             _runtime_state,
             kinematics_data,
             coordinates,
             LIMIT_DURATION_CURRENT_WINDOW,
         )
 
+    return {}
+
 
 # %% Private functions
 def _analyze_current_window(
     data: dict[str, ktk.TimeSeries],
     arg: Arg,
-    prev_data_cycles: dict[Literal["left", "right"], list],
+    prev_data_cycles: dict[str, list],
     limit_duration: float = LIMIT_DURATION_CURRENT_WINDOW,
-) -> dict[Literal["left", "right"], KtkDataAndCycles]:
+) -> dict[str, KtkDataAndCycles]:  # where str is "left" or "right"
     """
     Extract kinematics and validated propulsion cycles.
 
     Processing is limited to the current real-time data window.
     """
     # Initialize the current window data
-    current_window_data: dict[Literal["left", "right"], KtkDataAndCycles] = {
+    current_window_data: dict[str, KtkDataAndCycles] = {
         "left": {"ts": None, "cycles": None},
         "right": {"ts": None, "cycles": None},
     }
@@ -447,20 +437,16 @@ def _analyze_current_window(
 
 
 def _update_data_cycles(
-    cycles: dict[Literal["left", "right"], list[PushCycle]],
-    current_window_data: dict[Literal["left", "right"], KtkDataAndCycles],
-) -> dict[Literal["left", "right"], list[PushCycle]]:
+    cycles: dict[str, list[PushCycle]],
+    current_window_data: dict[str, KtkDataAndCycles],
+) -> dict[str, list[PushCycle]]:  # where str is "left" or "right"
     """
     Update global cycle history upon cycle detection.
 
     Appends newly identified propulsion cycles to the continuous historical log
     """
     try:
-        sides: tuple[Literal["left", "right"], Literal["left", "right"]] = (
-            "left",
-            "right",
-        )
-        for side in sides:
+        for side in ("left", "right"):
             # Skip if no cycles were detected for this side in the
             # current window
             current_cycles = current_window_data[side]["cycles"]
@@ -489,16 +475,12 @@ def _update_data_cycles(
 
 
 def _update_ts_full(
-    ts_full: dict[Literal["left", "right"], ktk.TimeSeries | None],
-    current_window_data: dict[Literal["left", "right"], KtkDataAndCycles],
-) -> dict[Literal["left", "right"], ktk.TimeSeries | None]:
+    ts_full: dict[str, ktk.TimeSeries | None],
+    current_window_data: dict[str, KtkDataAndCycles],
+) -> dict[str, ktk.TimeSeries | None]:  # where str is "left" or "right"
     """Update the global timeserie of Meta2 with newly detected timeserie."""
     try:
-        sides: tuple[Literal["left", "right"], Literal["left", "right"]] = (
-            "left",
-            "right",
-        )
-        for side in sides:
+        for side in ("left", "right"):
             ts = current_window_data[side]["ts"]
 
             if ts is None:
@@ -531,65 +513,6 @@ def _update_ts_full(
         print(f"_update_ts_full : {e}")
 
     return ts_full
-
-
-def _send_data_godot(
-    new_cycle_send: dict[Literal["left", "right"], int],
-    cycles: dict[Literal["left", "right"], list[PushCycle]],
-) -> dict[Literal["left", "right"], int]:
-    """
-    Send computed kinematics metrics to Godot upon cycle detection.
-
-    Streams the median push frequency and push pattern geometry of the last
-    three cycles via python_bridge, then increments the sent cycle counter.
-    """
-    sides: tuple[Literal["left", "right"], Literal["left", "right"]] = (
-        "left",
-        "right",
-    )
-
-    for side in sides:
-        if (
-            len(cycles[side]) >= 3
-            and len(cycles[side]) == new_cycle_send[side]
-        ):
-            mean_push_frequency = float(
-                np.median(
-                    [
-                        cycles[side][-1]["push_frequency"],
-                        cycles[side][-2]["push_frequency"],
-                        cycles[side][-3]["push_frequency"],
-                    ]
-                )
-            )
-
-            last_push_pattern_1 = cycles[side][-1][
-                "normalised_push_pattern"
-            ].tolist()
-            last_push_pattern_2 = cycles[side][-2][
-                "normalised_push_pattern"
-            ].tolist()
-            last_push_pattern_3 = cycles[side][-3][
-                "normalised_push_pattern"
-            ].tolist()
-
-            label_push_pattern = str(cycles[side][-1]["label_push_pattern"])
-
-            data = {
-                side: {
-                    "mean_push_frequency": mean_push_frequency,
-                    "last_push_pattern_1": last_push_pattern_1,
-                    "last_push_pattern_2": last_push_pattern_2,
-                    "last_push_pattern_3": last_push_pattern_3,
-                    "label_push_pattern": label_push_pattern,
-                }
-            }
-
-            sender.send({"command": "biofeedback_update", "data": data})
-
-            new_cycle_send[side] += 1
-
-    return new_cycle_send
 
 
 def _initialize_data_side(arg: Arg) -> list[DataSide]:
@@ -666,7 +589,7 @@ def _compute_local_kinematics(
     data_windowed: dict[str, ktk.TimeSeries],
     data_side: list[DataSide],
     n: int,
-) -> tuple[ktk.TimeSeries, Literal["left", "right"]]:
+) -> tuple[ktk.TimeSeries, str]:  # where str is "left" or "right"
     """
     Transform tracking data into local kinematics.
 
@@ -748,10 +671,10 @@ def _execute_analysis_pipeline(
     kinematics_data: KinematicsData,
     arg: Arg,
     LIMIT_DURATION_CURRENT_WINDOW: float,
-) -> tuple[float, float]:
+) -> dict[str, Any]:
     """Run kinematic analysis and distribute results."""
     if _runtime_state["data"] is None:
-        return
+        return {}
 
     _runtime_state["current_window_data"] = _analyze_current_window(
         _runtime_state["data"],
@@ -761,7 +684,7 @@ def _execute_analysis_pipeline(
     )
 
     if _runtime_state["current_window_data"] is None:
-        return
+        return {}
 
     kinematics_data["cycles"] = _update_data_cycles(
         kinematics_data["cycles"],
@@ -772,12 +695,44 @@ def _execute_analysis_pipeline(
         _runtime_state["current_window_data"],
     )
 
-    _runtime_state["new_cycle_send"] = _send_data_godot(
-        _runtime_state["new_cycle_send"],
-        kinematics_data["cycles"],
-    )
+    data: dict[str, dict[str, Any]] = {}
+    for side in ("left", "right"):
+        if len(kinematics_data["cycles"][side]) >= 3:
+            mean_push_frequency = float(
+                np.median(
+                    [
+                        kinematics_data["cycles"][side][-1]["push_frequency"],
+                        kinematics_data["cycles"][side][-2]["push_frequency"],
+                        kinematics_data["cycles"][side][-3]["push_frequency"],
+                    ]
+                )
+            )
 
-    return
+            last_push_pattern_1 = kinematics_data["cycles"][side][-1][
+                "normalised_push_pattern"
+            ].tolist()
+            last_push_pattern_2 = kinematics_data["cycles"][side][-2][
+                "normalised_push_pattern"
+            ].tolist()
+            last_push_pattern_3 = kinematics_data["cycles"][side][-3][
+                "normalised_push_pattern"
+            ].tolist()
+
+            label_push_pattern = str(
+                kinematics_data["cycles"][side][-1]["label_push_pattern"]
+            )
+
+            data[side] = {
+                "mean_push_frequency": mean_push_frequency,
+                "last_push_pattern_1": last_push_pattern_1,
+                "last_push_pattern_2": last_push_pattern_2,
+                "last_push_pattern_3": last_push_pattern_3,
+                "label_push_pattern": label_push_pattern,
+            }
+
+            _runtime_state["new_cycle_send"][side] += 1
+
+    return data
 
 
 # %% Main
@@ -816,7 +771,7 @@ if __name__ == "__main__":
 
     try:
         while True:
-            biofeedback_update(**arg)
+            biofeedback_kinematics(**arg)
     except KeyboardInterrupt:
         print("Biofeedback closed")
         biofeedback_stop()

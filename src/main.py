@@ -25,7 +25,10 @@ return value.
 
 """
 
-print("Initializing wheelsims_analysis...")
+print("--------------------")
+print(" WheelSims Analysis ")
+print("--------------------")
+print("Importing Python Modules...")
 
 # ruff: disable[E402]
 # because we want the text to appear in the console without delay
@@ -55,7 +58,7 @@ def _test(arg1: int, arg2: int) -> list:
 
 COMMAND_MAPPING: dict[str, Callable] = {
     "test": _test,
-    "biofeedback_update": biofeedback.biofeedback_update,
+    "biofeedback_kinematics": biofeedback.biofeedback_kinematics,
     "biofeedback_stop": biofeedback.biofeedback_stop,
     "biofeedback_pushrim_kinetics_connect": bf_pk.connect,
     "biofeedback_pushrim_kinetics_process": bf_pk.process,
