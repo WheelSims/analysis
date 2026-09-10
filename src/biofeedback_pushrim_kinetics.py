@@ -14,6 +14,7 @@ TIME_SPAN = 5  # Number of seconds to show on the rolling plot
 N_POINTS = 300  # Number of points in the rolling plot
 
 N_PUSHES = 3  # Number of pushes to calculate on
+RESAMPLE_FREQUENCY = 240  # Resample everything to this freq before processing
 
 
 @dataclass
@@ -38,6 +39,7 @@ class PushrimKineticsBiofeedback:
             self.nw = NextWheelDummy()
         else:
             self.nw = NextWheel(ip)
+            self.nw.start_streaming()
 
     def process(self) -> dict:
         """Process data and send back to Godot, called regularly."""
@@ -86,11 +88,24 @@ def calculate_pushrim_kinetics_biofeedback(
         - "Ftot": the Ftot curve, in newton.
 
     """
+    # Default output
+    out: dict[str, Any] = {
+        "Fpeak": 0.0,
+        "FtotCurve": [0 for _ in range(N_POINTS)],
+    }
+
+    # Return if no data
+    if len(data["Analog"].time) == 0:
+        return out
+
     # Keep the last seconds
     if data["Analog"].time[-1] - TIME_SPAN > data["Analog"].time[0]:
         data["Analog"] = data["Analog"].get_ts_after_time(
             data["Analog"].time[-1] - TIME_SPAN
         )
+
+    # Resample
+    data["Analog"].resample(RESAMPLE_FREQUENCY, in_place=True)
     data["Encoder"].resample(
         data["Analog"].time, extrapolate=True, in_place=True
     )
@@ -111,7 +126,6 @@ def calculate_pushrim_kinetics_biofeedback(
         pass
 
     # Calculate parameters
-    out: dict[str, Any] = {}
     Fpeak: list[float] = []
     n_pushes = ts.count_events("push")
     if n_pushes >= N_PUSHES:
@@ -126,13 +140,7 @@ def calculate_pushrim_kinetics_biofeedback(
     else:
         out["Fpeak"] = np.mean(Fpeak)
 
-    # Equal number of points
-    ts.resample(
-        np.linspace(ts.time[0], ts.time[-1], len(ts.time)), in_place=True
-    )
-
     final_frequency = float(N_POINTS) / (ts.time[-1] - ts.time[0])
-    ts = ktk.filters.butter(ts, final_frequency / 2)
     ts.resample(final_frequency, in_place=True)
 
     ts.data["Ftot"][ts.isnan("Ftot")] = 0.0
