@@ -592,56 +592,6 @@ def _send_data_godot(
     return new_cycle_send
 
 
-def _print_log(
-    new_cycle_log: dict[Literal["left", "right"], int],
-    cycles: dict[Literal["left", "right"], list[PushCycle]],
-    current_window_data: dict[Literal["left", "right"], KtkDataAndCycles],
-    end: float,
-    start: float,
-) -> dict[Literal["left", "right"], int]:
-    """
-    Display push data when a cycle is detected.
-
-    (ex) side : push n°X |
-    execution duration: X.XXXXXX |
-    time windowed: X.XX |
-    Push Pattern: last [X, Y, Z]
-    """
-    try:
-        sides: tuple[Literal["left", "right"], Literal["left", "right"]] = (
-            "left",
-            "right",
-        )
-        for side in sides:
-            ts = current_window_data[side]["ts"]
-
-            if ts is None:
-                continue
-
-            if len(cycles[side]) == new_cycle_log[side]:
-                push_frequency = cycles[side][-1]["push_frequency"]
-                label_push_pattern = cycles[side][-1]["label_push_pattern"]
-
-                duration_cycle_analized = ts.time[-1] - ts.time[0]
-
-                print(
-                    f"{f'{side}':<8} "
-                    f" : Push n°{len(cycles[side]):<3} | "
-                    f"Time execution: {end - start:<8.6f} s | "
-                    "Time data windowed: "
-                    f"{duration_cycle_analized:<4.2f} s | "
-                    f"{push_frequency:<4.2f} Pushes per second | "
-                    f"Push pattern: {label_push_pattern}"
-                )
-
-                new_cycle_log[side] += 1
-
-    except Exception as e:
-        print(f"print_log : {e}")
-
-    return new_cycle_log
-
-
 def _initialize_data_side(arg: Arg) -> list[DataSide]:
     """Initialize and structures calibration coordinates for both sides."""
     # Get and convert coordinates to homogeneous arrays [X, Y, Z, 1.0]
@@ -800,11 +750,8 @@ def _execute_analysis_pipeline(
     LIMIT_DURATION_CURRENT_WINDOW: float,
 ) -> tuple[float, float]:
     """Run kinematic analysis and distribute results."""
-    start_time = time.time()
-
     if _runtime_state["data"] is None:
-        end_time = time.time()
-        return start_time, end_time
+        return
 
     _runtime_state["current_window_data"] = _analyze_current_window(
         _runtime_state["data"],
@@ -814,8 +761,7 @@ def _execute_analysis_pipeline(
     )
 
     if _runtime_state["current_window_data"] is None:
-        end_time = time.time()
-        return start_time, end_time
+        return
 
     kinematics_data["cycles"] = _update_data_cycles(
         kinematics_data["cycles"],
@@ -831,17 +777,7 @@ def _execute_analysis_pipeline(
         kinematics_data["cycles"],
     )
 
-    end_time = time.time()
-
-    _runtime_state["new_cycle_log"] = _print_log(
-        _runtime_state["new_cycle_log"],
-        kinematics_data["cycles"],
-        _runtime_state["current_window_data"],
-        end_time,
-        start_time,
-    )
-
-    return start_time, end_time
+    return
 
 
 # %% Main
